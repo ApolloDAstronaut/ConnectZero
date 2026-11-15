@@ -1,0 +1,9 @@
+[project]
+name = "alphazero"
+version = "0.1.0"
+requires-python = ">=3.13"
+dependencies = [
+    "numpy>=2.5.3",
+    "pygame>=2.6.1",
+    "torch>=2.14.1",
+]
