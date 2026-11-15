@@ -1,6 +1,4 @@
-### Code to play against a stupid
-### TODO: fix this terrible code
-### WARNING: bad spaghetti code
+### Code to play against trained model
 
 from rules import place_piece, init_board, is_win, is_board_full, legal_actions
 import numpy as np
@@ -8,8 +6,9 @@ import torch
 
 from network import ConnectNet
 
-encode_dict = {'':0, 'X':1, 'O':-1}
-model = ConnectNet(input_shape=(1, 6, 7),
+MODEL_VERSION = 10
+
+model = ConnectNet(input_shape=(2, 6, 7),
                    num_res_blocks=2,
                    num_actions=7,
                    num_filters=32,
@@ -17,29 +16,59 @@ model = ConnectNet(input_shape=(1, 6, 7),
                    value_conv_channels_out=1,
                    value_lin1_out=8)
 
+# Load trained model
+model.load_state_dict(
+    torch.load(f"./models/model_v{MODEL_VERSION}.pth",
+               map_location="cpu",
+               weights_only=True)
+)
+model.eval()
+
 board = init_board()
-print(board)
+print(np.where(board == 1, 'X', np.where(board == -1, 'O', ' ')))
+
 current_player = 1
 run = True
+
 while run:
-    if current_player == -1: # player is bot
-        encoded_board = torch.Tensor(np.array(
-            [[encode_dict[board[i, j]] for j in range(board.shape[1])] for i in range(board.shape[0])])).unsqueeze(0).unsqueeze(0)
-        policy, value = model.forward(encoded_board)
-        policy = policy.tolist()[0]
+    if current_player == -1:  # Player is bot
+
+        # Encode board from current player's perspective
+        encoded_board = torch.tensor(
+            np.stack([
+                board == current_player,
+                board == -current_player
+            ]),
+            dtype=torch.float32
+        ).unsqueeze(0)
+
+        # Forward propagation
+        with torch.no_grad():
+            policy, value = model(encoded_board)
+
+        # Get raw policy logits
+        policy = policy.squeeze(0).numpy()
+
+        # Mask illegal actions
         legal_mask = np.array(legal_actions(board), dtype=bool)
-        legal_moves = np.array(list((enumerate(policy))))[legal_mask]
-        selected_move = np.argmax(legal_moves[:, 1])
+        policy[~legal_mask] = -np.inf
+
+        selected_move = int(np.argmax(policy))
+
         print(f"Player O selected column {selected_move + 1}!")
-        board = place_piece(board, 'O', selected_move)
+        board = place_piece(board, current_player, selected_move)
+
     else:
         selected_move = int(input("Player X: ")) - 1
-        board = place_piece(board, 'X', selected_move)
-    print(board)
+        board = place_piece(board, current_player, selected_move)
+
+    # Display using X and O
+    print(np.where(board == 1, 'X', np.where(board == -1, 'O', ' ')))
 
     if is_win(board, current_player):
         run = False
         print(f"Player {'X' if current_player == 1 else 'O'} has won!")
+
         print('''HH   HH   OOOOO    OOOOO   RRRRRR    AAAAA   YY   YY
 HH   HH  OO   OO  OO   OO  RR   RR  AA   AA   YY YY
 HH   HH  OO   OO  OO   OO  RR   RR  AA   AA    YYY
@@ -50,6 +79,9 @@ HH   HH  OO   OO  OO   OO  RR   RR  AA   AA     Y
 HH   HH  OO   OO  OO   OO  RR   RR  AA   AA     Y
 HH   HH   OO OO    OO OO   RR   RR  AA   AA     Y
 HH   HH    OOO      OOO    RR   RR  AA   AA     Y''')
+
     elif is_board_full(board):
-        print("Board full! Tis' a draw. ")
+        run = False
+        print("Board full! Tis' a draw.")
+
     current_player *= -1

@@ -78,4 +78,10 @@ def is_board_full(board):
     return np.sum(board == 0) == 0
 
 
+def is_terminal(board):
+    return (is_win(board, 1) or
+                is_win(board, -1) or
+                is_board_full(board))
+
+
 

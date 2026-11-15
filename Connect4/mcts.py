@@ -1,9 +1,9 @@
 ### Implement Monte-Carlo Tree Search (MCTS), aided by the NN
 
-from rules import init_board, legal_actions, place_piece, is_win, is_board_full
+from rules import init_board, legal_actions, place_piece, is_win, is_board_full, is_terminal
 
 import numpy as np
-
+import torch
 
 '''
 AlphaZero trains by teaching its neural network to think ahead;
@@ -46,9 +46,7 @@ class Node:
 
     # Check if node state is terminal (win / loss)
     def is_terminal(self):
-        return (is_win(self.state, 1) or
-                is_win(self.state, -1) or
-                is_board_full(self.state))
+        return is_terminal(board=self.state)
 
 
     # Return value of terminal state
@@ -116,9 +114,28 @@ class MCTS:
         if node.is_terminal():
             value = node.terminal_value()
         else:
-            # TODO: mask and normalize policy
-            policy, value = self.model.forward(node.state)
+            # Encode board (current player's perspective)
+            state = torch.tensor(
+                np.stack([
+                    node.state == node.current_player,
+                    node.state == -node.current_player
+                ]),
+                dtype=torch.float32
+            ).unsqueeze(0)
 
+            # Neural network inference
+            with torch.no_grad():
+                logits, value = self.model.forward(state)
+
+            # Convert policy logits into probabilities
+            policy = torch.softmax(logits, dim=-1).squeeze(0).numpy()
+
+            # Mask illegal actions
+            legal = legal_actions(node.state)
+            policy = policy * legal
+            policy = policy / policy.sum()
+
+            # Expand node
             node.expand(node.current_player, policy)
 
         # 3. Backpropagation
@@ -137,22 +154,25 @@ class dummy_model():
         return [1] + [0] * 6, 1
 
 
-model = dummy_model()
-tree = MCTS(model, exploration_rate=0.1)
-tree.simulate()
-tree.simulate()
-tree.simulate()
-tree.simulate()
-tree.simulate()
-tree.simulate()
-tree.simulate()
-print("Root visits:", tree.root.visit_count)
-print("Child visits:", [
-    child.visit_count
-    for child in tree.root.children.values()
-])
+## TESTING
+# TODO: Remove!
+if __name__ == '__main__':
+    model = dummy_model()
+    tree = MCTS(model, exploration_rate=0.1)
+    tree.simulate()
+    tree.simulate()
+    tree.simulate()
+    tree.simulate()
+    tree.simulate()
+    tree.simulate()
+    tree.simulate()
+    print("Root visits:", tree.root.visit_count)
+    print("Child visits:", [
+        child.visit_count
+        for child in tree.root.children.values()
+    ])
 
-print(tree.root.value, tree.root.visit_count)
+    print(tree.root.value, tree.root.visit_count)
 
 
 
