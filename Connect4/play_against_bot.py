@@ -6,7 +6,7 @@ import torch
 
 from network import ConnectNet
 
-MODEL_VERSION = 10
+MODEL_VERSION = 5
 
 model = ConnectNet(input_shape=(2, 6, 7),
                    num_res_blocks=2,

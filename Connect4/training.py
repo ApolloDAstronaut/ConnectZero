@@ -25,26 +25,31 @@ model = ConnectNet(input_shape=(2, 6, 7),
                    policy_conv_channels_out=2,
                    value_conv_channels_out=1,
                    value_lin1_out=8)
-torch.save(model.state_dict(), f'./models/model0.pth') # Random weights
 
+torch.save(model.state_dict(), f'./models/model0.pth') # Random weights
+optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
 
 num_iterations = 10
 num_games_per_batch = 20
-num_epochs = 2
+num_epochs = 5
 
 replay_buffer = []
 for iteration in range(1, num_iterations + 1):
+
     # Separate training logs of different models
     print(f"======================= ITERATION {iteration} =======================")
+
+    # Inference mode
+    model.eval()
+
     # Generate multiple games
     for game in range(num_games_per_batch):
         examples = self_play(model)
         replay_buffer.extend(examples)
-        print(f"Game No. {game} completed")
+        print(f"Game No. {game} completed!")
 
-    # Setup
-    optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
-    model.train() # activate train mode
+    # Train mode
+    model.train()
 
     # Train on data from multiple games
     for epoch in range(num_epochs):
@@ -53,6 +58,7 @@ for iteration in range(1, num_iterations + 1):
 
     # Save model
     torch.save(model.state_dict(), f'./models/model_v{iteration}.pth')
+
 
 
 

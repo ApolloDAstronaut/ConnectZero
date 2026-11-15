@@ -26,14 +26,13 @@ def self_play(model):
 
     history = []
 
-
     state = init_board() # board state
     current_player = 1
 
     # Self-play game
     while not is_terminal(state): # a game is short enough for us not to care about limits
 
-        mcts = MCTS(model, exploration_rate=0.1)
+        mcts = MCTS(model, exploration_rate=0.3)
         mcts.root = Node(current_player=current_player, state=state, parent=None, action=0, prior=0)
 
         for simulation in range(num_simulations):
@@ -81,10 +80,10 @@ def train_model(model, optimizer, data, logging=False):
     total_value_loss = 0
 
     # Train
-    for s, pi, z, _ in data:
+    for s, pi, z, player in data:
         # Prepare network input (i.e. booleans for each player)
         s = torch.tensor(
-            np.stack([(s == 1), (s == -1)]),
+            np.stack([(s == player), (s == -player)]),
             dtype=torch.float32
         )
         s = s.unsqueeze(0) # to account for BatchNorm expecting a 4D tensor, will use mini-batches later
