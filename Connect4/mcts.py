@@ -24,6 +24,30 @@ Training can then compare the neural networks initial evaluation of a position /
 and the presumably more accurate evaluation after thinking through that line thoroughly. 
 '''
 
+## HELPER FUNCTIONS
+def add_dirichlet_noise(priors, legal_actions, alpha=0.3, epsilon=0.1):
+    priors = np.array(priors, copy=True)
+    actions = np.asarray(legal_actions, dtype=int)
+
+    if len(actions) == 0:
+        return priors
+
+    # Generate random probabilities for legal moves
+    noise = np.random.dirichlet(
+        [alpha] * len(actions)
+    )
+
+    # Mix network priors with dirichlet noise
+    priors[actions] = (
+        (1 - epsilon) * priors[actions]
+        + epsilon * noise
+    )
+
+    return priors
+
+
+## MAIN ##
+
 
 class Node:
     # Initialize new node in search tree
@@ -88,7 +112,7 @@ class MCTS:
         self.root = Node(current_player=1, state=board, parent=None, action=0, prior=0)
 
 
-    def simulate(self):
+    def simulate(self, dirichlet_alpha, dirichlet_epsilon):
         # TODO: Make this flexible to any root
         node = self.root
 
@@ -134,6 +158,13 @@ class MCTS:
             legal = legal_actions(node.state)
             policy = policy * legal
             policy = policy / policy.sum()
+
+            # Apply dirichlet root noise
+            if node.parent is None:
+                policy = add_dirichlet_noise(priors=policy,
+                                             legal_actions=legal_actions(node.state),
+                                             alpha=dirichlet_alpha,
+                                             epsilon=dirichlet_epsilon)
 
             # Expand node
             node.expand(node.current_player, policy)

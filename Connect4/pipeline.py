@@ -21,9 +21,7 @@ in order to document progress.
 
 
 ## Generate target data for the models (s, π, z)
-def self_play(model):
-    num_simulations = 100
-
+def self_play(model, num_simulations, exploration_rate=0.1, dirichlet_alpha=0.0, dirichlet_epsilon=0.0):
     history = []
 
     state = init_board() # board state
@@ -32,11 +30,11 @@ def self_play(model):
     # Self-play game
     while not is_terminal(state): # a game is short enough for us not to care about limits
 
-        mcts = MCTS(model, exploration_rate=0.3)
+        mcts = MCTS(model, exploration_rate=exploration_rate)
         mcts.root = Node(current_player=current_player, state=state, parent=None, action=0, prior=0)
 
         for simulation in range(num_simulations):
-            mcts.simulate()
+            mcts.simulate(dirichlet_alpha=dirichlet_alpha, dirichlet_epsilon=dirichlet_epsilon)
 
         visits = np.array([
             mcts.root.children[a].visit_count
@@ -74,42 +72,52 @@ def self_play(model):
 
 
 # Train new models based on training data
-def train_model(model, optimizer, data, logging=False):
+def train_model(model, optimizer, batch_size, data, lambda_reg, logging=False):
     # Total losses for evaluation (want to calculate mean later)
     total_policy_kl = 0
     total_value_loss = 0
 
     # Train
-    for s, pi, z, player in data:
+    for i in range(0, len(data), batch_size):
+        batch = data[i:i + batch_size]
+
         # Prepare network input (i.e. booleans for each player)
-        s = torch.tensor(
-            np.stack([(s == player), (s == -player)]),
-            dtype=torch.float32
-        )
+        s = torch.tensor(np.stack([
+            np.stack([state == player, state == -player])
+            for state, pi, z, player in batch
+        ]), dtype=torch.float32)
+
         s = s.unsqueeze(0) # to account for BatchNorm expecting a 4D tensor, will use mini-batches later
 
         # Prepare targets
-        pi = torch.tensor(pi, dtype=torch.float32).unsqueeze(0)
-        z = torch.tensor([z], dtype=torch.float32)
+        pi = torch.tensor(np.stack([
+            pi for _, pi, _, _ in batch
+             ]), dtype=torch.float32)
+
+        z = torch.tensor([
+            z for state, pi, z, player in batch
+        ], dtype=torch.float32)
 
         # Forward
         p, v = model(s)
 
         # Calculate loss
         policy_ce = -(pi * F.log_softmax(p, dim=-1)).sum()
-        policy_kl = F.kl_div(F.log_softmax(p, dim=-1), pi, reduction="sum") # converges to zero as models matches data
+        policy_kl = F.kl_div(F.log_softmax(p, dim=-1), pi, reduction="sum") # converges to zero as models matches MCTS
         value_loss = F.mse_loss(v.reshape(-1), z.reshape(-1))
 
-        loss = policy_ce + value_loss
+        regularization_loss = lambda_reg * torch.nn.utils.get_total_norm(model.parameters())
+
+        loss = policy_ce + value_loss + regularization_loss
 
         # Training step
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()
 
-        # Update totals for evaluation
-        total_policy_kl += policy_kl.item()
-        total_value_loss += value_loss.item()
+        # Logging
+        total_policy_kl += policy_kl.item() * len(batch) # len(batch) might not match batch_size, e.g. at the end of data
+        total_value_loss += value_loss.item() * len(batch)
 
     if logging:
         print(
@@ -147,7 +155,7 @@ if __name__ == '__main__':
     model.train()
 
     data = self_play(model)
-    model2 = train_model(epochs=120, model=model, optimizer=optimizer, data=data)
+    # model2 = train_model(epochs=120, model=model, optimizer=optimizer, data=data)
 
 
 

@@ -6,22 +6,24 @@ import torch
 
 from network import ConnectNet
 
-MODEL_VERSION = 5
+from omegaconf import OmegaConf
 
-model = ConnectNet(input_shape=(2, 6, 7),
-                   num_res_blocks=2,
-                   num_actions=7,
-                   num_filters=32,
-                   policy_conv_channels_out=2,
-                   value_conv_channels_out=1,
-                   value_lin1_out=8)
+config = OmegaConf.load("config.yaml")
+
+MODEL_VERSION = 10
 
 # Load trained model
-model.load_state_dict(
-    torch.load(f"./models/model_v{MODEL_VERSION}.pth",
+checkpoint = torch.load(f"./models/model_v{MODEL_VERSION}.pth",
                map_location="cpu",
                weights_only=True)
-)
+
+network_config = checkpoint["network_config"]
+model = ConnectNet(input_shape=(2, 6, 7),
+                   num_actions=7,
+                   **network_config
+                   )
+model.load_state_dict(checkpoint["model_state_dict"])
+
 model.eval()
 
 board = init_board()
